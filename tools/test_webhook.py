@@ -1,6 +1,6 @@
 import requests
 
-WORKER = "https://mailpilot-bridge.eef79c33792320291e2b4a7aba1c4a31.workers.dev"
+WORKER = "https://mailpilot-bridge.growths.workers.dev"
 VERIFY = "28ada79281805079cda4f9b9d3ae5877"
 
 # Test 1: Basic connectivity
