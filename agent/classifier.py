@@ -86,7 +86,7 @@ class ImportanceClassifier:
             score += DIRECT_BONUS
             reasons.append("sent directly to you")
 
-        if msg.has_attachments:
+        if msg.attachments:
             score += ATTACHMENT_BONUS
 
         llm_rating = None
