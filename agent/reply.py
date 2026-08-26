@@ -1,13 +1,73 @@
 import json
 import logging
+import os
 import smtplib
 from email.message import EmailMessage as StdEmailMessage
 from email.utils import formataddr
 from pathlib import Path
 
+import requests
+
 logger = logging.getLogger("mailpilot.reply")
 
 COMMANDS_DIR = Path("commands")
+
+
+def _cf_kv_url():
+    acc = os.environ.get("CF_ACCOUNT_ID", "")
+    ns = os.environ.get("CF_KV_NAMESPACE", "")
+    if acc and ns:
+        return f"https://api.cloudflare.com/client/v4/accounts/{acc}/storage/kv/namespaces/{ns}/values"
+    return None
+
+
+def _cf_kv_headers():
+    tok = os.environ.get("CF_API_TOKEN", "")
+    return {"Authorization": f"Bearer {tok}"} if tok else {}
+
+
+class CloudflareKV:
+    def __init__(self):
+        self.url = _cf_kv_url()
+        self.headers = _cf_kv_headers()
+
+    @property
+    def available(self):
+        return bool(self.url)
+
+    def get(self, key):
+        if not self.available:
+            return None
+        try:
+            r = requests.get(f"{self.url}/{key}", headers=self.headers, timeout=15)
+            if r.status_code == 200:
+                return r.json()
+        except Exception:
+            logger.exception("CF KV get failed")
+        return None
+
+    def put(self, key, value):
+        if not self.available:
+            return False
+        try:
+            r = requests.put(
+                f"{self.url}/{key}",
+                headers={**self.headers, "Content-Type": "application/json"},
+                data=json.dumps(value).encode(),
+                timeout=15,
+            )
+            return r.status_code in (200, 204)
+        except Exception:
+            logger.exception("CF KV put failed")
+        return False
+
+    def delete(self, key):
+        if not self.available:
+            return
+        try:
+            requests.delete(f"{self.url}/{key}", headers=self.headers, timeout=10)
+        except Exception:
+            pass
 
 
 def parse_plus_command(text):
@@ -47,6 +107,7 @@ class CommandProcessor:
         self.sender = sender
         self.commands_dir = COMMANDS_DIR
         self.commands_dir.mkdir(parents=True, exist_ok=True)
+        self._kv = CloudflareKV()
 
     def _default_account(self):
         for acc in self.settings.accounts:
@@ -55,6 +116,12 @@ class CommandProcessor:
         return None
 
     def pending(self):
+        if self._kv.available:
+            data = self._kv.get("pending")
+            if data and isinstance(data, list):
+                self._kv.delete("pending")
+                return data
+            return []
         path = self.commands_dir / "pending.jsonl"
         if not path.exists():
             return []
@@ -69,6 +136,11 @@ class CommandProcessor:
         return parsed
 
     def record(self, result):
+        if self._kv.available:
+            existing = self._kv.get("results") or []
+            existing.append(result)
+            self._kv.put("results", existing[-20:])
+            return
         with open(self.commands_dir / "results.jsonl", "a", encoding="utf-8") as fh:
             fh.write(json.dumps(result) + "\n")
 
