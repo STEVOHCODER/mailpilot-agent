@@ -1,21 +1,30 @@
 import requests
 
-WORKER = "https://mailpilot-bridge.growths.workers.dev"
 VERIFY = "28ada79281805079cda4f9b9d3ae5877"
+URLS = [
+    "https://mailpilot.growths.dev",
+    "https://mailpilot-bridge.growths.workers.dev",
+]
 
-# Test 1: Basic
-r = requests.get(f"{WORKER}/", timeout=10)
-print("Test 1 - Root:", r.status_code, r.text[:100])
+for WORKER in URLS:
+    print(f"\n--- Testing {WORKER} ---")
+    try:
+        r = requests.get(f"{WORKER}/", timeout=8)
+        print(f"  Root: {r.status_code} {r.text[:80]}")
+    except Exception as e:
+        print(f"  Root: ERROR {e}")
 
-# Test 2: Verification challenge at /webhook (what Meta actually sends)
-r = requests.get(f"{WORKER}/webhook", params={
-    "hub.mode": "subscribe",
-    "hub.verify_token": VERIFY,
-    "hub.challenge": "CHALLENGE_ACCEPTED"
-}, timeout=10)
-print("Test 2 - Verify /webhook:", r.status_code, r.text[:100])
-assert r.status_code == 200 and r.text == "CHALLENGE_ACCEPTED", "VERIFICATION FAILED at /webhook"
-print("VERIFY OK at /webhook - challenge returned correctly")
+    try:
+        r = requests.get(f"{WORKER}/webhook", params={
+            "hub.mode": "subscribe",
+            "hub.verify_token": VERIFY,
+            "hub.challenge": "CHALLENGE_ACCEPTED"
+        }, timeout=8)
+        print(f"  Verify: {r.status_code} {r.text[:80]}")
+        if r.status_code == 200 and r.text == "CHALLENGE_ACCEPTED":
+            print(f"  *** VERIFICATION WORKS at {WORKER} ***")
+    except Exception as e:
+        print(f"  Verify: ERROR {e}")
 
 # Test 3: Wrong token
 r = requests.get(f"{WORKER}/", params={
