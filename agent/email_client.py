@@ -219,7 +219,6 @@ def parse_raw_message(uid, raw_bytes):
         subject=subject,
         body_text=body_text,
         date=received_at,
-        has_attachments=has_attachments,
         has_list_unsubscribe=bool(msg.get("List-Unsubscribe")),
         delivered_to=decode_header_value(delivered_to).lower(),
         attachments=attachments or [],
