@@ -120,6 +120,10 @@ class EmailWhatsAppAgent:
             )
         self.activity = ActivityLog()
         self._lock_socket = None
+        from agent.reply import CommandProcessor
+        self.commands = CommandProcessor(settings, sender=self.sender)
+        if self.sender is not None:
+            self.sender._dry = dry_run
 
     def _resolve_backend(self):
         backend = self.settings.email.backend.lower()
@@ -210,6 +214,12 @@ class EmailWhatsAppAgent:
 
     def run_cycle(self, imap_client=None):
         report = CycleReport()
+        try:
+            outbound = self.commands.process()
+            if outbound:
+                logger.info("Processed %d outgoing command(s)", len(outbound))
+        except Exception:
+            logger.exception("Command processing failed")
         since = datetime.now(timezone.utc) - timedelta(hours=self.settings.email.lookback_hours)
         messages = self._fetch_messages(since, imap_client=imap_client)
 

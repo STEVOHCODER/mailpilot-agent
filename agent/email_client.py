@@ -123,6 +123,7 @@ class EmailMessage:
     has_list_unsubscribe: bool = False
     account: str = ""
     delivered_to: str = ""
+    attachments: list = field(default_factory=list)
 
     @property
     def sender_display(self):
@@ -164,14 +165,15 @@ def _decode_part(part):
 def _extract_body(msg):
     plain = ""
     html_body = ""
-    has_attachments = False
+    attachments = []
     for part in msg.walk():
         if part.is_multipart():
             continue
         disposition = (part.get_content_disposition() or "").lower()
         filename = part.get_filename()
         if disposition == "attachment" or (filename and disposition != "inline"):
-            has_attachments = True
+            if filename:
+                attachments.append(decode_header_value(filename))
             continue
         ctype = part.get_content_type()
         if ctype == "text/plain" and not plain:
@@ -181,10 +183,10 @@ def _extract_body(msg):
         elif ctype == "text/html" and not html_body:
             html_body = _decode_part(part)
     if plain:
-        return plain, has_attachments
+        return plain, html_body, attachments
     if html_body:
-        return _html_to_text(html_body), has_attachments
-    return "", has_attachments
+        return _html_to_text(html_body), html_body, attachments
+    return "", "", attachments
 
 
 def parse_raw_message(uid, raw_bytes):
@@ -194,7 +196,7 @@ def parse_raw_message(uid, raw_bytes):
     to_pairs = getaddresses([decode_header_value(msg.get("To", ""))])
     to_addresses = [addr.lower() for _, addr in to_pairs if addr]
     subject = decode_header_value(msg.get("Subject", ""))
-    body_text, has_attachments = _extract_body(msg)
+    body_text, _, attachments = _extract_body(msg)
     received_at = None
     raw_date = msg.get("Date")
     if raw_date:
@@ -221,6 +223,7 @@ def parse_raw_message(uid, raw_bytes):
         has_attachments=has_attachments,
         has_list_unsubscribe=bool(msg.get("List-Unsubscribe")),
         delivered_to=decode_header_value(delivered_to).lower(),
+        attachments=attachments,
     )
 
 

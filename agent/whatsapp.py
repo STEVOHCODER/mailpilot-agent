@@ -29,28 +29,27 @@ def _truncate(text, limit):
 
 
 def format_email_alert(msg, classification, summary=None):
-    when = "unknown time"
+    when = ""
     if msg.date is not None:
-        when = msg.date.astimezone().strftime("%a %d %b %Y, %H:%M")
-    destination = msg.account or msg.delivered_to
+        when = msg.date.astimezone().strftime("%d %b, %H:%M")
+    destination = msg.account or msg.delivered_to or "primary inbox"
+    message_body = summary or _truncate(msg.body_text, 900)
+    attachment = ", ".join(msg.attachments[:6]) if msg.attachments else "None"
     lines = [
-        "*IMPORTANT EMAIL*",
+        "*NEW EMAIL*",
         "",
-        f"*To:* {_clean(destination) or 'primary inbox'}",
         f"*From:* {_clean(msg.sender_display)}",
-        f"*Subject:* {_clean(msg.subject) or '(no subject)'}",
-        f"*Received:* {when}",
-        f"*Why:* {_clean(classification.summary())}",
-        "",
+        f"*To:* {_clean(destination)}",
+        f"*Title:* {_clean(msg.subject) or '(no title)'}",
     ]
-    if summary:
-        lines.append(f"*Gemini summary:* {_clean(summary)}")
-        lines.append("")
-    excerpt = _truncate(msg.body_text, 700)
-    if excerpt:
-        lines.append(excerpt)
-        lines.append("")
-    lines.append(f"_Importance score {classification.score}/100_")
+    if when:
+        lines.append(f"*Time:* {when}")
+    lines += [
+        f"*Attachment:* {attachment}",
+        "",
+        "*Message:*",
+        _clean(message_body) or "(empty)",
+    ]
     return "\n".join(lines)
 
 
