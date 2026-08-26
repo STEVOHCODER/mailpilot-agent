@@ -1,14 +1,68 @@
 const VERIFY_TOKEN = '28ada79281805079cda4f9b9d3ae5877';
 
 export default {
-  async fetch(request) {
-    return handleRequest(request);
+  async fetch(request, env) {
+    return handleRequest(request, env);
   }
 };
 
-async function handleRequest(request) {
+async function handleRequest(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
+  const method = request.method;
+  const ns = env.MAILPLOT_KV;
+
+  if (path === '/status') {
+    let pending = null, results = null, hits = null;
+    if (ns) {
+      try { pending = JSON.parse(await ns.get('pending')); } catch(e) {}
+      try { results = JSON.parse(await ns.get('results')); } catch(e) {}
+      try { hits = parseInt(await ns.get('hits') || '0'); } catch(e) {}
+    }
+    return new Response(JSON.stringify({
+      ok: true,
+      worker: 'mailpilot-bridge',
+      kv: !!ns,
+      pending: pending,
+      results_count: results ? results.length : 0,
+      webhook_hits: hits,
+      time: new Date().toISOString()
+    }, null, 2), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  if (path === '/cmd' && method === 'GET') {
+    return new Response(CMD_FORM_HTML, {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' }
+    });
+  }
+
+  if (path === '/cmd' && method === 'POST') {
+    try {
+      const formData = await request.formData();
+      const cmdText = (formData.get('command') || '').trim();
+      if (!cmdText) {
+        return new Response(CMD_FORM_HTML.replace('<div id="msg"></div>', '<div id="msg" style="color:red">Empty command</div>'), {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        });
+      }
+      if (ns) {
+        await ns.put('pending', JSON.stringify([{
+          from: 'web',
+          text: cmdText,
+          ts: Date.now()
+        }]));
+      }
+      return new Response(CMD_FORM_HTML.replace('<div id="msg"></div>', '<div id="msg" style="color:green">Command sent! It will be processed in the next cycle (~5 min).</div>'), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    } catch (e) {
+      return new Response(CMD_FORM_HTML.replace('<div id="msg"></div>', '<div id="msg" style="color:red">Error: ' + String(e) + '</div>'), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+  }
 
   if (path === '/privacy') {
     return new Response(PRIVACY_HTML, {
@@ -39,8 +93,16 @@ async function handleRequest(request) {
   }
 
   if (path === '/webhook' && request.method === 'POST') {
+    let hits = 0;
+    if (ns) {
+      try { hits = parseInt(await ns.get('hits') || '0') + 1; } catch(e) { hits = 1; }
+      await ns.put('hits', String(hits));
+    }
     try {
       const body = await request.json();
+      if (ns) {
+        await ns.put('last_payload', JSON.stringify(body).substring(0, 2000));
+      }
       const entries = body.entry || [];
       for (const entry of entries) {
         const changes = entry.changes || [];
@@ -48,17 +110,22 @@ async function handleRequest(request) {
           const value = change.value || {};
           const messages = value.messages || [];
           for (const msg of messages) {
-            const ns = MAILPLOT_KV;
-            await ns.put('pending', JSON.stringify([{
-              from: msg.from || '',
-              text: (msg.text && msg.text.body) || '',
-              ts: Date.now()
-            }]));
+            if (ns) {
+              await ns.put('pending', JSON.stringify([{
+                from: msg.from || '',
+                text: (msg.text && msg.text.body) || '',
+                ts: Date.now()
+              }]));
+            }
           }
         }
       }
-    } catch (e) {}
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    } catch (e) {
+      if (ns) {
+        await ns.put('last_error', String(e));
+      }
+    }
+    return new Response(JSON.stringify({ ok: true, hits }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
 
   return new Response('Not Found', { status: 404 });
@@ -174,5 +241,60 @@ pre{background:#f0f0f0;padding:12px;border-radius:6px;overflow-x:auto}
 <pre>delete my data</pre>
 <p>Or email <strong>stevohsunb@gmail.com</strong> with your request.</p>
 <p>We will process deletion requests within 24 hours.</p>
+</body>
+</html>`;
+
+const CMD_FORM_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MailPilot - Send Command</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;color:#e2e8f0}
+.card{background:#1e293b;border-radius:16px;padding:32px;width:100%;max-width:480px;box-shadow:0 25px 50px rgba(0,0,0,.4)}
+h1{font-size:1.5rem;margin-bottom:4px}
+.sub{color:#94a3b8;font-size:.9rem;margin-bottom:24px}
+label{display:block;font-size:.85rem;color:#94a3b8;margin-bottom:6px}
+textarea{width:100%;padding:12px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:1rem;resize:vertical;min-height:80px;font-family:monospace}
+textarea:focus{outline:none;border-color:#3b82f6}
+.btn{width:100%;padding:12px;border:none;border-radius:8px;background:#3b82f6;color:#fff;font-size:1rem;font-weight:600;cursor:pointer;margin-top:16px}
+.btn:hover{background:#2563eb}
+.examples{margin-top:20px;padding:16px;background:#0f172a;border-radius:8px;font-size:.85rem;color:#94a3b8}
+.examples code{color:#3b82f6}
+#msg{margin-top:12px;font-size:.9rem;padding:8px;border-radius:6px;display:none}
+#msg.show{display:block}
+.ok{background:rgba(34,197,94,.1);color:#22c55e;border:1px solid rgba(34,197,94,.2)}
+.err{background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.2)}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>MailPilot</h1>
+<p class="sub">Send a command to MailPilot</p>
+<form method="POST" action="/cmd">
+<label for="command">Command</label>
+<textarea id="command" name="command" placeholder="/plus email@example.com:your message here" required></textarea>
+<button type="submit" class="btn">Send Command</button>
+</form>
+<div id="msg"></div>
+<div class="examples">
+<strong>Examples:</strong><br>
+<code>/plus boss@company.com:Please review the report</code><br>
+<code>/plus stevohsunb@gmail.com:hello my guy</code>
+</div>
+</div>
+<script>
+const msg=document.getElementById('msg');
+if(window.location.search.includes('sent=1')){
+msg.textContent='Command sent! Processing in next cycle (~5 min).';
+msg.className='show ok';
+}
+if(window.location.search.includes('err=1')){
+msg.textContent='Failed to send command.';
+msg.className='show err';
+}
+</script>
 </body>
 </html>`;

@@ -52,7 +52,7 @@ jobs:
           CF_WORKER_URL: ${{ secrets.CF_WORKER_URL }}
           EXTRA_ACCOUNTS: ${{ secrets.EXTRA_ACCOUNTS }}
           MAILPILOT_PUBLIC: "1"
-          LOG_LEVEL: WARNING
+          LOG_LEVEL: INFO
         run: python main.py run
 
       - name: Chain next cycle (self-perpetuating near-instant checks)
