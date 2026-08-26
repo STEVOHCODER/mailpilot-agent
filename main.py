@@ -42,7 +42,8 @@ def main(argv=None):
     watch_p = sub.add_parser("watch", help="run continuously on an interval")
     watch_p.add_argument("--dry-run", action="store_true", help="classify but do not send WhatsApp messages")
 
-    sub.add_parser("auth-gmail", help="one-time Google OAuth consent for Gmail API access")
+    auth_p = sub.add_parser("auth-gmail", help="one-time Google OAuth consent for Gmail API access")
+    auth_p.add_argument("--account", default="primary", help="account name from config.yaml accounts list")
 
     sub.add_parser("status", help="show processed/forwarded stats and recent activity")
 
@@ -63,7 +64,9 @@ def main(argv=None):
             print("(Google Cloud Console -> APIs & Services -> Credentials -> Create OAuth client ID -> Desktop app)")
             sys.exit(1)
         from agent.gmail_client import GmailClient
-        GmailClient(settings.gmail_client_id, settings.gmail_client_secret, ROOT / "gmail_token.json").authorize()
+        token_path = ROOT / "gmail_tokens" / f"{args.account}.json" if args.account != "primary" else ROOT / "gmail_token.json"
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        GmailClient(settings.gmail_client_id, settings.gmail_client_secret, token_path).authorize()
         return
 
     agent = _build_agent(args)

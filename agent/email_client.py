@@ -121,6 +121,8 @@ class EmailMessage:
     date: object = None
     has_attachments: bool = False
     has_list_unsubscribe: bool = False
+    account: str = ""
+    delivered_to: str = ""
 
     @property
     def sender_display(self):
@@ -202,6 +204,11 @@ def parse_raw_message(uid, raw_bytes):
                 received_at = received_at.replace(tzinfo=timezone.utc)
         except (TypeError, ValueError):
             received_at = None
+    delivered_to = (
+        msg.get("Delivered-To", "")
+        or msg.get("X-Original-To", "")
+        or msg.get("X-Forwarded-To", "")
+    )
     return EmailMessage(
         uid=str(uid),
         message_id=message_id,
@@ -213,6 +220,7 @@ def parse_raw_message(uid, raw_bytes):
         date=received_at,
         has_attachments=has_attachments,
         has_list_unsubscribe=bool(msg.get("List-Unsubscribe")),
+        delivered_to=decode_header_value(delivered_to).lower(),
     )
 
 

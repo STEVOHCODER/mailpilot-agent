@@ -32,9 +32,11 @@ def format_email_alert(msg, classification, summary=None):
     when = "unknown time"
     if msg.date is not None:
         when = msg.date.astimezone().strftime("%a %d %b %Y, %H:%M")
+    destination = msg.account or msg.delivered_to
     lines = [
         "*IMPORTANT EMAIL*",
         "",
+        f"*To:* {_clean(destination) or 'primary inbox'}",
         f"*From:* {_clean(msg.sender_display)}",
         f"*Subject:* {_clean(msg.subject) or '(no subject)'}",
         f"*Received:* {when}",

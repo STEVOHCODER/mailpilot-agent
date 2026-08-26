@@ -1,3 +1,4 @@
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -87,11 +88,23 @@ class AgentConfig:
 
 
 @dataclass
+class AccountConfig:
+    name: str = "primary"
+    address: str = ""
+    password: str = ""
+    host: str = ""
+    port: int = 993
+    mailbox: str = "INBOX"
+    backend: str = "imap"
+
+
+@dataclass
 class Settings:
     email: EmailConfig
     whatsapp: WhatsAppConfig
     classifier: ClassifierConfig
     agent: AgentConfig
+    accounts: list = field(default_factory=list)
     email_address: str = ""
     email_password: str = ""
     gmail_client_id: str = ""
@@ -211,11 +224,54 @@ def load_settings(config_path=None):
         log_level=os.environ.get("LOG_LEVEL") or str(a.get("log_level", "INFO")).upper(),
     )
 
+    accounts = []
+    for i, acc in enumerate(raw.get("accounts") or []):
+        if not isinstance(acc, dict) or not acc.get("address"):
+            continue
+        accounts.append(AccountConfig(
+            name=str(acc.get("name") or f"account-{i + 1}"),
+            address=str(acc["address"]).lower(),
+            password=str(acc.get("password", "")),
+            host=str(acc.get("host", "")),
+            port=int(acc.get("port", 993)),
+            mailbox=str(acc.get("mailbox", "INBOX")),
+            backend=str(acc.get("backend", "imap")),
+        ))
+    if os.environ.get("EXTRA_ACCOUNTS"):
+        try:
+            extra = json.loads(os.environ["EXTRA_ACCOUNTS"])
+            if isinstance(extra, list):
+                for i, acc in enumerate(extra):
+                    if not isinstance(acc, dict) or not acc.get("address"):
+                        continue
+                    accounts.append(AccountConfig(
+                        name=str(acc.get("name") or f"cloud-{i + 1}"),
+                        address=str(acc["address"]).lower(),
+                        password=str(acc.get("password", "")),
+                        host=str(acc.get("host", "")),
+                        port=int(acc.get("port", 993)),
+                        mailbox=str(acc.get("mailbox", "INBOX")),
+                        backend=str(acc.get("backend", "imap")),
+                    ))
+        except json.JSONDecodeError:
+            print("EXTRA_ACCOUNTS env is not valid JSON; ignoring")
+    if email_cfg.address and not any(a.address == email_cfg.address.lower() for a in accounts):
+        accounts.insert(0, AccountConfig(
+            name="primary",
+            address=email_cfg.address.lower(),
+            password=os.environ.get("EMAIL_PASSWORD", ""),
+            host=email_cfg.host,
+            port=email_cfg.port,
+            mailbox=email_cfg.mailbox,
+            backend="auto",
+        ))
+
     secrets = {env_key: os.environ.get(env_key, "") for env_key in ENV_KEYS}
     return Settings(
         email=email_cfg,
         whatsapp=whatsapp_cfg,
         classifier=classifier_cfg,
         agent=agent_cfg,
+        accounts=accounts,
         **{ENV_KEYS[k]: v for k, v in secrets.items()},
     )

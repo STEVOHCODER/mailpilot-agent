@@ -131,37 +131,74 @@ class EmailWhatsAppAgent:
             backend = "gmail_api" if has_gmail_oauth else "imap"
         return backend
 
-    def _fetch_messages(self, since, imap_client=None):
+    def _token_path_for(self, account_name):
+        if account_name == "primary" and GMAIL_TOKEN_PATH.exists():
+            return GMAIL_TOKEN_PATH
+        return ROOT / "gmail_tokens" / f"{account_name}.json"
+
+    def _fetch_account(self, acc, since):
         from agent.email_client import EmailClient
-        backend = self._resolve_backend()
         batch = self.settings.email.batch_size
+        backend = acc.backend
+        if backend == "auto":
+            has_oauth = bool(self.settings.gmail_client_id) and self._token_path_for(acc.name).exists()
+            backend = "gmail_api" if has_oauth else "imap"
+        messages = []
         if backend == "gmail_api":
             from agent.gmail_client import GmailClient
             client = GmailClient(
                 self.settings.gmail_client_id,
                 self.settings.gmail_client_secret,
-                GMAIL_TOKEN_PATH,
+                self._token_path_for(acc.name),
             )
-            logger.info("Fetching via Gmail API (HTTPS)")
             messages = client.fetch_since(since, batch_size=batch)
         elif backend == "imap":
-            client = imap_client or EmailClient(
-                host=self.settings.email.host,
-                port=self.settings.email.port,
-                address=self.settings.email_address,
-                password=self.settings.email_password,
-                mailbox=self.settings.email.mailbox,
+            client = EmailClient(
+                host=acc.host or self.settings.email.host,
+                port=acc.port or self.settings.email.port,
+                address=acc.address,
+                password=acc.password,
+                mailbox=acc.mailbox,
             )
             try:
-                if client.mail is None:
-                    client.connect()
+                client.connect()
                 messages = client.fetch_since(since, batch_size=batch)
             finally:
-                if imap_client is None:
-                    client.disconnect()
+                client.disconnect()
         else:
-            raise RuntimeError(f"unknown email backend '{backend}' (use gmail_api, imap or auto)")
+            logger.error("Unknown backend '%s' for account %s; skipping", backend, acc.address)
+            return []
+        for m in messages:
+            m.account = f"{acc.name} <{acc.address}>"
         return messages
+
+    def _fetch_messages(self, since, imap_client=None):
+        accounts = [a for a in self.settings.accounts if a.address]
+        if not accounts:
+            raise RuntimeError("no email accounts configured")
+        all_messages = []
+        for idx, acc in enumerate(accounts):
+            is_primary = idx == 0 and imap_client is not None
+            try:
+                if is_primary:
+                    batch = self.settings.email.batch_size
+                    from agent.email_client import EmailClient as _EC
+                    client = imap_client
+                    try:
+                        if client.mail is None:
+                            client.connect()
+                        messages = client.fetch_since(since, batch_size=batch)
+                    finally:
+                        pass
+                    for m in messages:
+                        m.account = f"{acc.name} <{acc.address}>"
+                    all_messages.extend(messages)
+                else:
+                    all_messages.extend(self._fetch_account(acc, since))
+            except Exception as exc:
+                logger.error("Account %s fetch failed: %s", acc.address, exc)
+        logger.info("Fetched %d messages across %d account(s)", len(all_messages), len(accounts))
+        return all_messages
 
     def _summarize(self, msg):
         if not (self.settings.classifier.summarize and self.gemini):
