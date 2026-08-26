@@ -118,9 +118,12 @@ class CommandProcessor:
     def pending(self):
         if self._kv.available:
             data = self._kv.get("pending")
-            if data and isinstance(data, list):
+            if data:
                 self._kv.delete("pending")
-                return data
+                if isinstance(data, list):
+                    return data
+                elif isinstance(data, dict):
+                    return [data]
             return []
         path = self.commands_dir / "pending.jsonl"
         if not path.exists():
