@@ -171,9 +171,9 @@ class CommandProcessor:
             if self.sender is not None and not getattr(self.sender, "_dry", False):
                 try:
                     if result["ok"]:
-                        self.sender.send_text(f"MailPilot: delivered your message to {result['to']}")
+                        self.sender.send_text(f"MailPilot: delivered to {result['to']}")
                     else:
-                        self.sender.send_text(f"MailPilot: could not send ({result['detail'][:120]})")
-                except Exception:
-                    pass
+                        self.sender.send_text(f"MailPilot: failed ({result.get('detail','unknown')[:120]})")
+                except Exception as send_exc:
+                    logger.error("WhatsApp confirmation failed: %s", send_exc)
         return results
