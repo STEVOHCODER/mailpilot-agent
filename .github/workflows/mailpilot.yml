@@ -1,0 +1,74 @@
+name: MailPilot
+
+on:
+  schedule:
+    # Three staggered timers -> effective check every ~2 min despite GitHub's 5-min floor
+    - cron: "0,5,10,15,20,25,30,35,40,45,50,55 * * * *"
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
+    - cron: "4,9,14,19,24,29,34,39,44,49,54,59 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mailpilot
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install PyYAML requests
+
+      - name: Restore dedupe state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: mailpilot-state-${{ github.run_id }}
+          restore-keys: |
+            mailpilot-state-
+
+      - name: Run one MailPilot cycle
+        env:
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          WHATSAPP_TO_NUMBERS: ${{ secrets.WHATSAPP_TO_NUMBERS }}
+          META_PHONE_NUMBER_ID: ${{ secrets.META_PHONE_NUMBER_ID }}
+          MAILPILOT_PUBLIC: "1"
+          LOG_LEVEL: WARNING
+        run: python main.py run
+
+      - name: Chain next cycle (self-perpetuating near-instant checks)
+        if: always()
+        env:
+          CHAIN_TOKEN: ${{ secrets.CHAIN_TOKEN }}
+        run: |
+          sleep 25
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H "Authorization: Bearer $CHAIN_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/mailpilot.yml/dispatches \
+            -d '{"ref":"master"}')
+          echo "chain dispatch http=$code"
+          if [ "$code" != "204" ]; then
+            echo "::warning::Chain stopped (http=$code). Re-trigger the workflow manually or refresh CHAIN_TOKEN."
+          fi
+
+      - name: Save dedupe state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: mailpilot-state-${{ github.run_id }}
+# MailPilot cloud watcher

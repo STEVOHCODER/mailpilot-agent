@@ -1,0 +1,10 @@
+.env
+logs/
+state.json
+state.json.tmp
+gmail_token.json
+__pycache__/
+*.pyc
+*.log
+watch.out
+hf_space/
