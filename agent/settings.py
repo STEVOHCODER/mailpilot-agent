@@ -255,10 +255,11 @@ def load_settings(config_path=None):
                     ))
         except json.JSONDecodeError:
             print("EXTRA_ACCOUNTS env is not valid JSON; ignoring")
-    if email_cfg.address and not any(a.address == email_cfg.address.lower() for a in accounts):
+    primary_address = os.environ.get("EMAIL_ADDRESS", "")
+    if primary_address and not any(a.address == primary_address.lower() for a in accounts):
         accounts.insert(0, AccountConfig(
             name="primary",
-            address=email_cfg.address.lower(),
+            address=primary_address.lower(),
             password=os.environ.get("EMAIL_PASSWORD", ""),
             host=email_cfg.host,
             port=email_cfg.port,
