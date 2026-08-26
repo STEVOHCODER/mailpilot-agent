@@ -119,7 +119,6 @@ class EmailMessage:
     subject: str = ""
     body_text: str = ""
     date: object = None
-    has_attachments: bool = False
     has_list_unsubscribe: bool = False
     account: str = ""
     delivered_to: str = ""
@@ -223,7 +222,7 @@ def parse_raw_message(uid, raw_bytes):
         has_attachments=has_attachments,
         has_list_unsubscribe=bool(msg.get("List-Unsubscribe")),
         delivered_to=decode_header_value(delivered_to).lower(),
-        attachments=attachments,
+        attachments=attachments or [],
     )
 
 
