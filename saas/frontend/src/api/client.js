@@ -49,3 +49,10 @@ export const admin = {
   users: () => request('/admin/users'),
   toggleUser: (id) => request(`/admin/users/${id}/toggle`, { method: 'POST' }),
 };
+
+export const billing = {
+  plans: () => request('/billing/plans'),
+  subscription: () => request('/billing/subscription'),
+  checkout: (plan) => request(`/billing/checkout?plan=${plan}`, { method: 'POST' }),
+  portal: () => request('/billing/portal', { method: 'POST' }),
+};

@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.routes import auth, email, whatsapp, rules, dashboard, admin
+from app.routes import auth, email, whatsapp, rules, dashboard, admin, billing
 
 _worker_task = None
 
@@ -37,6 +37,7 @@ app.include_router(whatsapp.router)
 app.include_router(rules.router)
 app.include_router(dashboard.router)
 app.include_router(admin.router)
+app.include_router(billing.router)
 
 
 @app.get("/api/health")

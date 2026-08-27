@@ -1,6 +1,6 @@
 import { useState, useEffect, createContext, useContext } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom'
-import { auth, email, whatsapp, rules, dashboard } from './api/client'
+import { auth, email, whatsapp, rules, dashboard, billing } from './api/client'
 
 const AuthContext = createContext(null)
 
@@ -138,7 +138,7 @@ function Register() {
 function Dashboard() {
   const { user, logout } = useAuth()
   const [data, setData] = useState(null)
-  const [step, setStep] = useState(0) // 0=dashboard, 1=email, 2=whatsapp, 3=rules
+  const [step, setStep] = useState(0) // 0=dashboard, 1=email, 2=whatsapp, 3=rules, 4=billing
 
   useEffect(() => { dashboard.get().then(setData).catch(console.error) }, [])
 
@@ -146,7 +146,7 @@ function Dashboard() {
   const sidebar = (
     <div style={{ width: 220, background: '#0f172a', color: '#94a3b8', minHeight: '100vh', padding: '20px 0' }}>
       <div style={{ padding: '0 20px 20px', fontSize: '1.2rem', fontWeight: 700, color: '#fff' }}>MailPilot</div>
-      {[['Overview',0],['Email',1],['WhatsApp',2],['Rules',3]].map(([label,s]) => (
+      {[['Overview',0],['Email',1],['WhatsApp',2],['Rules',3],['Billing',4]].map(([label,s]) => (
         <div key={label} onClick={() => setStep(s)} style={{ padding: '10px 20px', cursor: 'pointer', background: step===s ? '#1e293b' : 'transparent', color: step===s ? '#fff' : '#94a3b8', borderLeft: step===s ? '3px solid #3b82f6' : '3px solid transparent' }}>{label}</div>
       ))}
       <div style={{ position: 'absolute', bottom: 20, width: 220 }}>
@@ -164,6 +164,7 @@ function Dashboard() {
         {step === 1 && <EmailStep />}
         {step === 2 && <WhatsAppStep />}
         {step === 3 && <RulesStep />}
+        {step === 4 && <BillingStep />}
       </div>
     </div>
   )
@@ -378,6 +379,66 @@ function RulesStep() {
           <button onClick={() => handleDelete(r.id)} style={{ padding: '6px 12px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem' }}>Delete</button>
         </div>
       ))}
+    </div>
+  )
+}
+
+function BillingStep() {
+  const [plans, setPlans] = useState([])
+  const [sub, setSub] = useState(null)
+
+  useEffect(() => {
+    billing.plans().then(setPlans).catch(console.error)
+    billing.subscription().then(setSub).catch(console.error)
+  }, [])
+
+  const handleUpgrade = async (plan) => {
+    try {
+      const res = await billing.checkout(plan)
+      window.location.href = res.url
+    } catch (err) { alert(err.message) }
+  }
+
+  const handlePortal = async () => {
+    try {
+      const res = await billing.portal()
+      window.location.href = res.url
+    } catch (err) { alert(err.message) }
+  }
+
+  return (
+    <div>
+      <h2 style={{ marginBottom: 24 }}>Billing & Subscription</h2>
+      {sub && (
+        <div style={{ padding: 20, background: '#fff', borderRadius: 12, border: '1px solid #eee', marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <strong>Current Plan: {sub.plan?.toUpperCase()}</strong>
+              <span style={{ marginLeft: 8, padding: '2px 8px', background: sub.status === 'active' ? '#f0fdf4' : '#fef2f2', color: sub.status === 'active' ? '#16a34a' : '#dc2626', borderRadius: 4, fontSize: '0.8rem' }}>{sub.status}</span>
+            </div>
+            {sub.plan !== 'free' && <button onClick={handlePortal} style={{ padding: '8px 16px', background: '#f1f5f9', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>Manage Subscription</button>}
+          </div>
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+        {plans.map(p => (
+          <div key={p.id} style={{ padding: 28, background: '#fff', borderRadius: 12, border: sub?.plan === p.id ? '2px solid #3b82f6' : '1px solid #eee', textAlign: 'center' }}>
+            <h3 style={{ marginBottom: 8 }}>{p.name}</h3>
+            <div style={{ fontSize: '2rem', fontWeight: 700, marginBottom: 8 }}>${p.price}<span style={{ fontSize: '0.9rem', fontWeight: 400, color: '#666' }}>/mo</span></div>
+            <p style={{ color: '#666', marginBottom: 16 }}>{p.messages_day === -1 ? 'Unlimited' : p.messages_day} messages/day</p>
+            <ul style={{ listStyle: 'none', padding: 0, marginBottom: 20, textAlign: 'left' }}>
+              {p.features.map(f => <li key={f} style={{ padding: '4px 0', fontSize: '0.9rem' }}>✓ {f}</li>)}
+            </ul>
+            {sub?.plan === p.id ? (
+              <button disabled style={{ width: '100%', padding: 10, background: '#e2e8f0', border: 'none', borderRadius: 8, color: '#64748b', cursor: 'default' }}>Current Plan</button>
+            ) : sub?.plan === 'free' || !sub ? (
+              <button onClick={() => handleUpgrade(p.id)} style={{ width: '100%', padding: 10, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>{p.price === 0 ? 'Get Started' : 'Upgrade'}</button>
+            ) : (
+              <button onClick={() => handleUpgrade(p.id)} style={{ width: '100%', padding: 10, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>Switch Plan</button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
